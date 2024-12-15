@@ -112,8 +112,11 @@ class FeedforwardNeuralNetwork:
         """
         # Using MSE Loss Function here
         return np.mean((y_train - y_pred)**2)
-    
-    def backpropagate(self, z_values, a_values, y_true):
+
+    def loss_gradient(self, y_pred, y_true):
+        return 2 * (y_pred - y_true) / y_true.shape[1]
+
+    def backpropagate(self, z_values, a_values, loss_grad):
         """
         Perform backpropagation to compute gradients.
         
@@ -133,7 +136,7 @@ class FeedforwardNeuralNetwork:
         # no activation function for output layers
         # compute the loss for the output layer individually
         # let error be np.mean(y_pred - y)
-        z_gradient = 2 * (a_values[-1] - y_true) / y_true.shape[1]  # shape = {1, batch_size}
+        z_gradient = loss_grad  # shape = {1, batch_size}
         w_gradient.append(z_gradient @ a_values[-2].T) # shape = {1, a_{L-1}}
         b_gradient.append(np.sum(z_gradient, axis = -1)[:,None]) # shape = {1, 1}
         
@@ -245,7 +248,8 @@ class FeedforwardNeuralNetwork:
                 val_loss = self.compute_cost(a_values_full_val[-1], y_val)
                 record["test_loss"].append(val_loss)
 
-                print(f"Epoch {iter + 1}: Train Loss = {train_loss:.6f}, Test Loss = {val_loss:.6f}")
+                if iter % (interval * 10) == 0:
+                    print(f"Epoch {iter + 1}: Train Loss = {train_loss:.6f}, Test Loss = {val_loss:.6f}")
 
             # Mini-batch training
             # -( n // -d) is equivalent to ceil(n/d) in Python
@@ -259,7 +263,8 @@ class FeedforwardNeuralNetwork:
                 
                 # Forward & Backward Propagation
                 a_values, z_values = self.feedforward(x_batch)
-                nabla_w, nabla_b = self.backpropagate(z_values, a_values, y_batch)
+                loss_grad = self.loss_gradient(a_values[-1], y_batch)
+                nabla_w, nabla_b = self.backpropagate(z_values, a_values, loss_grad)
                 self.update_parameters(nabla_w, nabla_b, learning_rate, opt_type)
         return record
 
@@ -279,7 +284,7 @@ y_train, y_test = output_data[:, :train_num], output_data[:, train_num:]
 
 # Train the network
 # nn.train(x_train, y_train, epochs=1000, learning_rate=0.1, batch_size=64, opt_type="sgd") # 这个目前的效果还挺不错的, bs = 64
-record = nn.train(x_train, y_train, epochs=1000, learning_rate=0.0001, batch_size=64, opt_type="adam", x_val=x_test, y_val=y_test)
+record = nn.train(x_train, y_train, epochs=1001, learning_rate=0.0001, batch_size=64, opt_type="adam", x_val=x_test, y_val=y_test)
 
 # Test error
 activations, _ = nn.feedforward(x_train)
