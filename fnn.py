@@ -28,7 +28,7 @@ class FeedforwardNeuralNetwork:
         if activation_type in ["relu", "sigmoid", "tanh"]:
             self.activation_type = activation_type
         else:
-            raise ValueError(f"Invalid activation function '{self.activation_type}'. Supported types: relu, sigmoid, tanh.")
+            raise ValueError(f"Invalid activation function '{activation_type}'. Supported types: relu, sigmoid, tanh.")
         self.weights = []
         self.biases = []
         
@@ -72,10 +72,11 @@ class FeedforwardNeuralNetwork:
         if self.activation_type == "relu":
             return (z > 0).astype(float)
         elif self.activation_type == "sigmoid":
-            sigmoid = self.activation(z)
-            return sigmoid * (1 - sigmoid)
+            s = 1 / (1 + np.exp(-z))
+            return s * (1 - s)
         elif self.activation_type == "tanh":
-            return 1 - self.activation(z)**2
+            t = np.tanh(z)
+            return 1 - t**2
         else:
             raise Exception("Invalid activation function")
 
@@ -186,11 +187,11 @@ class FeedforwardNeuralNetwork:
             factor2 = 1 - beta2**self.adm_step
             
             for i in range(len(nabla_w)):
-                self.b_f[i] = (beta1 * self.b_f[i] + (1-beta1) * nabla_b[i])
-                self.w_f[i] = (beta1 * self.w_f[i] + (1-beta1) * nabla_w[i])
+                self.b_f[i] = beta1 * self.b_f[i] + (1-beta1) * nabla_b[i]
+                self.w_f[i] = beta1 * self.w_f[i] + (1-beta1) * nabla_w[i]
                 
-                self.b_s[i] = (beta2 * self.b_s[i] + (1-beta2) * nabla_b[i])
-                self.w_s[i] = (beta2 * self.w_s[i] + (1-beta2) * nabla_w[i])
+                self.b_s[i] = beta2 * self.b_s[i] + (1-beta2) * (nabla_b[i]**2)
+                self.w_s[i] = beta2 * self.w_s[i] + (1-beta2) * (nabla_w[i]**2)
                 
                 b_f_hat = self.b_f[i]/factor1
                 w_f_hat = self.w_f[i]/factor1
@@ -198,14 +199,14 @@ class FeedforwardNeuralNetwork:
                 b_s_hat = self.b_s[i]/factor2
                 w_s_hat = self.w_s[i]/factor2
                 
-                self.weights[i] -= w_f_hat / (eps + np.sqrt(w_s_hat))
-                self.biases[i] -= b_f_hat / (eps + np.sqrt(b_s_hat))
+                self.weights[i] -= learning_rate * w_f_hat / (eps + np.sqrt(w_s_hat))
+                self.biases[i] -= learning_rate * b_f_hat / (eps + np.sqrt(b_s_hat))
                 
             self.adm_step +=1
         else:
             raise Exception(f"Invalid optimization type {opt_type}. Supported types: \"sgd\", \"adam\".")
         
-    def train(self, x_train, y_train, epochs, learning_rate, batch_size, opt_type = "adm"):
+    def train(self, x_train, y_train, epochs, learning_rate, batch_size, opt_type = "sgd", x_val=None, y_val=None, interval = 10):
         """
         Train the neural network using mini-batch gradient descent with early stopping.
         
@@ -218,11 +219,35 @@ class FeedforwardNeuralNetwork:
         """
         np.random.seed(42)
         num_samples = x_train.shape[1]
-        for _ in range(epochs):
+        record = None
+
+        if x_val is not None and y_val is not None:
+            record = {
+                "epoch": [],
+                "train_loss": [],
+                "test_loss": []
+            }
+
+        for iter in range(epochs):
             idx = np.random.permutation(num_samples)
             x_train = x_train[:,idx]
             y_train = y_train[:,idx]
 
+            # record the training and testing/validation loss during model training
+            if iter % interval == 0 and record is not None:
+                a_values_full_train, _ = self.feedforward(x_train)
+                train_loss = self.compute_cost(a_values_full_train[-1], y_train)
+
+                record["epoch"].append(iter + 1)
+                record["train_loss"].append(train_loss)
+
+                a_values_full_val, _ = self.feedforward(x_val)
+                val_loss = self.compute_cost(a_values_full_val[-1], y_val)
+                record["test_loss"].append(val_loss)
+
+                print(f"Epoch {iter + 1}: Train Loss = {train_loss:.6f}, Test Loss = {val_loss:.6f}")
+
+            # Mini-batch training
             # -( n // -d) is equivalent to ceil(n/d) in Python
             for i in range(-(num_samples // -batch_size)):
                 if (i+1) * batch_size >= num_samples:
@@ -236,19 +261,25 @@ class FeedforwardNeuralNetwork:
                 a_values, z_values = self.feedforward(x_batch)
                 nabla_w, nabla_b = self.backpropagate(z_values, a_values, y_batch)
                 self.update_parameters(nabla_w, nabla_b, learning_rate, opt_type)
+        return record
 
 # In[] Initialize data
-input_data, output_data = generate_data(num_points=50)
-input_data = input_data.T
-output_data = output_data[None,:]
+input_data, output_data = generate_data(num_points=100)
+sample_num = input_data.shape[0]
+permute_idx = np.random.permutation(sample_num)
+input_data = input_data.T[:,permute_idx]
+output_data = output_data[None,:][:, permute_idx]
 
 # In[] testing code
 nn = FeedforwardNeuralNetwork([2, 32, 32, 1], activation_type="relu")
-x_train, x_test = input_data[:,:1500], input_data[:,1500:]
-y_train, y_test = output_data[:,:1500], output_data[:,1500:]
+split_ratio = 0.7
+train_num = int(sample_num * split_ratio)
+x_train, x_test = input_data[:, :train_num], input_data[:, train_num:]
+y_train, y_test = output_data[:, :train_num], output_data[:, train_num:]
 
 # Train the network
-nn.train(x_train, y_train, epochs=1000, learning_rate=0.1, batch_size=8, opt_type="sgd")
+# nn.train(x_train, y_train, epochs=1000, learning_rate=0.1, batch_size=64, opt_type="sgd") # 这个目前的效果还挺不错的, bs = 64
+record = nn.train(x_train, y_train, epochs=1000, learning_rate=0.0001, batch_size=64, opt_type="adam", x_val=x_test, y_val=y_test)
 
 # Test error
 activations, _ = nn.feedforward(x_train)
@@ -260,10 +291,51 @@ activations, _ = nn.feedforward(x_test)
 y_pred = activations[-1]
 val_loss = nn.compute_cost(y_pred, y_test)
 
+print(test_loss, val_loss)
+# TODO : 分析一下tanh, sigmoid, relu不work的原因
 
+# In[] 可视化部分
+def visualization_2D(x, y, u, title):
+    plt.figure(figsize=(8, 6))
+    plt.tricontourf(x, y, u, levels=100, cmap='viridis')
+    plt.colorbar()
+    plt.title(title)
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.show()
 
+visualization_2D(x_test[0,:], x_test[1,:], y_test[0,:], title= "Actual u(x, y)")
+visualization_2D(x_test[0,:], x_test[1,:], y_pred[0,:], title="Predicted u(x, y)")
 
-# In[]: the following for grid search
+abs_error = np.abs(y_pred[0,:] - y_test[0,:])
+visualization_2D(x_test[0,:], x_test[1,:], abs_error, title= "Abs. Error")
+
+# In[] 误差时间历程曲线
+def plot_training_history(record):
+    """
+    Plot the training and testing loss curves from the record dictionary.
+
+    Parameters:
+    record (dict): A dictionary containing "epoch", "train_loss", and "test_loss".
+    """
+    epochs = record.get("epoch", [])
+    train_loss = record.get("train_loss", [])
+    test_loss = record.get("test_loss", [])
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(epochs, train_loss, label='Train Loss', marker='o')
+    plt.plot(epochs, test_loss, label='Test Loss', marker='x')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+plot_training_history(record)
+
+# In[]: the following for grid search 后面的都没有修改
 
 # Split the data into folds manually for cross-validation
 def split_folds(x, y, num_folds):
