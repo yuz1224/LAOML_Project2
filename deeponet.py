@@ -1,5 +1,4 @@
 from fnn import FeedforwardNeuralNetwork
-from matplotlib import pyplot as plt
 import numpy as np
 
 
@@ -136,7 +135,7 @@ class DeepONet:
                 record["test_loss"].append(val_loss)
 
                 if iter % (interval * 10) == 0:
-                    print(f"Epoch {iter + 1}: Train Loss = {train_loss:.6f}, Test Loss = {val_loss:.6f}")
+                    print(f"(DeepONET) Epoch {iter + 1}: Train Loss = {train_loss:.6f}, Test Loss = {val_loss:.6f}")
 
             # Mini-batch training
             # -( n // -d) is equivalent to ceil(n/d) in Python
