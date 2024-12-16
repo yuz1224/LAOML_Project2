@@ -1,4 +1,14 @@
+from matplotlib import pyplot as plt
 import numpy as np
+
+def visualization_2D(x, y, u, title):
+    plt.figure(figsize=(8, 6))
+    plt.tricontourf(x, y, u, levels=100, cmap='viridis')
+    plt.colorbar()
+    plt.title(title)
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.show()
 
 class FeedforwardNeuralNetwork:
     def __init__(self, layer_sizes, activation_type = "relu"):

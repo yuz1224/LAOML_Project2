@@ -1,4 +1,4 @@
-from fnn import FeedforwardNeuralNetwork
+from fnn import FeedforwardNeuralNetwork, visualization_2D
 from matplotlib import pyplot as plt
 import numpy as np
 
@@ -49,15 +49,6 @@ print(test_loss, val_loss)
 # TODO : 分析一下tanh, sigmoid, relu不work的原因
 
 # In[] 可视化部分
-def visualization_2D(x, y, u, title):
-    plt.figure(figsize=(8, 6))
-    plt.tricontourf(x, y, u, levels=100, cmap='viridis')
-    plt.colorbar()
-    plt.title(title)
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.show()
-
 visualization_2D(x_test[0,:], x_test[1,:], y_test[0,:], title= "Actual u(x, y)")
 visualization_2D(x_test[0,:], x_test[1,:], y_pred[0,:], title="Predicted u(x, y)")
 

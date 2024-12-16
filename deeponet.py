@@ -3,7 +3,7 @@ import numpy as np
 
 
 class DeepONet:
-    def __init__(self, branch_layer_sizes, trunk_layer_sizes):
+    def __init__(self, branch_layer_sizes, trunk_layer_sizes, activation_type):
         """
         Initialize the DeepONet architecture.
 
@@ -11,8 +11,8 @@ class DeepONet:
         branch_layer_sizes (list): List containing the number of neurons in each layer for the branch net.
         trunk_layer_sizes (list): List containing the number of neurons in each layer for the trunk net.
         """
-        self.branch_net = FeedforwardNeuralNetwork(branch_layer_sizes)
-        self.trunk_net = FeedforwardNeuralNetwork(trunk_layer_sizes)
+        self.branch_net = FeedforwardNeuralNetwork(branch_layer_sizes,activation_type)
+        self.trunk_net = FeedforwardNeuralNetwork(trunk_layer_sizes, activation_type)
 
         # Ensure the output dimensions of the branch and trunk nets match
         assert branch_layer_sizes[-1] == trunk_layer_sizes[-1], "Output dimensions of branch and trunk nets must match"
@@ -22,13 +22,13 @@ class DeepONet:
         Perform a feedforward pass through the DeepONet f -> u.
 
         Parameters:
-        x_branch (numpy.ndarray): Input array for the branch net {#dimension f, batch_size}.
+        x_branch (numpy.ndarray): Input array for the branch net {#dimension f, func_num}.
         x_trunk (numpy.ndarray): Input array for the trunk net {#dimension u, query_points}.
 
         Returns:
         numpy.ndarray: Output of the DeepONet.
         """
-        a_branch, z_branch = self.branch_net.feedforward(x_branch) # output shape = {D, batch_size}
+        a_branch, z_branch = self.branch_net.feedforward(x_branch) # output shape = {D, func_num}
         a_trunk, z_trunk = self.trunk_net.feedforward(x_trunk)   # output shape = {D, query_points}
 
         return a_branch, z_branch, a_trunk, z_trunk
@@ -43,7 +43,7 @@ class DeepONet:
 
         Parameters:
         y_pred (numpy.ndarray): Predicted labels.
-        y_true (numpy.ndarray): True labels. dimension must be {batch_size, query_points}.
+        y_true (numpy.ndarray): True labels. dimension must be {func_num, query_points}.
 
         Returns:
         float: Cost value.
@@ -57,7 +57,7 @@ class DeepONet:
         query_points = y_trunk.shape[1]
         total_num = batch_size * query_points
 
-        branch_grad = y_trunk @ (y_branch.T @ y_trunk - u_true).T / total_num        # shape = {D, batch_size}
+        branch_grad = y_trunk @ (y_branch.T @ y_trunk - u_true).T / total_num        # shape = {D, func_num}
         trunk_grad =  y_branch @ (y_branch.T @ y_trunk - u_true)  / total_num       # shape = {D, query_points}
 
         return branch_grad, trunk_grad
@@ -121,17 +121,19 @@ class DeepONet:
 
             x_branch, x_trunk = x_branch[:, branch_idx], x_trunk[:, trunk_idx]
 
+            u_train = u_train[np.ix_(branch_idx, trunk_idx)] if function_num > 1 else u_train[:, trunk_idx]
+
             # record the training and testing/validation loss during model training
             if iter % interval == 0 and record is not None:
 
                 record["epoch"].append(iter + 1)
 
                 y_branch, _, y_trunk, _ = self.feedforward(x_branch, x_trunk)
-                train_loss = self.compute_cost(y_branch, y_trunk, u_train)
+                train_loss = self.compute_cost(y_branch[-1], y_trunk[-1], u_train)
                 record["train_loss"].append(train_loss)
 
                 y_branch, _, y_trunk, _ = self.feedforward(val_branch, val_trunk)
-                val_loss = self.compute_cost(y_branch, y_trunk, u_val)
+                val_loss = self.compute_cost(y_branch[-1], y_trunk[-1], u_val)
                 record["test_loss"].append(val_loss)
 
                 if iter % (interval * 10) == 0:
@@ -142,15 +144,15 @@ class DeepONet:
             for i in range(-(function_num // -batch_size)):
                 if (i + 1) * batch_size >= function_num:
                     x_batch_branch = x_branch[:, i * batch_size:]
-                    x_batch_trunk = x_trunk[:, i * batch_size:]
-                    u_batch = u_train[:, i * batch_size:]
+                    # x_batch_trunk = x_trunk[:, i * batch_size:]
+                    u_batch = u_train[i * batch_size:, :]
                 else:
                     x_batch_branch = x_branch[:, i * batch_size: (i + 1) * batch_size]
-                    x_batch_trunk = x_trunk[:, i * batch_size: (i + 1) * batch_size]
-                    u_batch = u_train[:, i * batch_size: (i + 1) * batch_size]
+                    # x_batch_trunk = x_trunk[:, i * batch_size: (i + 1) * batch_size]
+                    u_batch = u_train[i * batch_size: (i + 1) * batch_size, :]
 
                 # Forward & Backward Propagation
-                branch_w_grad, branch_b_grad, trunk_w_grad, trunk_b_grad = self.backpropagate(x_batch_branch, x_batch_trunk, u_batch)
+                branch_w_grad, branch_b_grad, trunk_w_grad, trunk_b_grad = self.backpropagate(x_batch_branch, x_trunk, u_batch)
                 self.update_parameters(branch_w_grad, branch_b_grad, trunk_w_grad, trunk_b_grad, learning_rate, opt_type)
         return record
 
